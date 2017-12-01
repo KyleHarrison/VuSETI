@@ -1,0 +1,624 @@
+<!doctype html>
+<html>
+<head>
+  <title>Cluster Visualization</title>
+
+  <style>
+    /* .headings { 
+      background-color: powderblue;
+      font:18pt times;
+      text-align: center;
+  } */
+  .btn-primary-outline {
+      background-color: transparent;
+      border: 1px solid transparent;
+    }
+    .btn-primary-outline:disabled {
+      font:18pt times;
+      color: rgb(0, 0, 0) !important;
+      font-weight: bold !important;
+      cursor: default !important;
+    }
+  </style>
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+  <script src="http://visjs.org/dist/vis.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+  
+  <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  <script src="https://canvasjs.com/assets/script/canvasjs.min.js"></script>
+  <meta charset="utf-8">
+ 
+
+  <script type="text/javascript">
+    // STRING NAMES
+    var dbname = "";
+    var datagroupname = "";
+
+    // GRAPH VARIABLES
+    var graph = null;
+    var chart = null;
+
+    // INIT DATA SENT FROM SERVER ON PAGE RENDER
+    var component_data = {{initData}};
+    var raw_data = {{initRawData}};
+    var labels = {{initLabels}};
+    var labelcount = {{initLabelcount}};
+    var metrics = {{initMetrics}};
+
+    // KEEP TRACK OF BUTTONS
+    var active_component_buttons = [1,1,1,0,0,0,0,0,0,0];
+    var data_group_names = [];
+
+    // CURRENTLY SELECTED BUTTONS
+    var selected_components = [0,1,2];
+    var selected_labels = [];
+    var selected_tooltip =0;
+    
+    // CURRENTLY PLOTTED RAW DATA
+    var current_rawdata_index = 0;
+    
+    // JQUERY ON DOCUMENT LOAD
+    $(document).ready(function(event){
+
+    /*
+    * START EVENT LISTNERS
+    */
+    // On change of database selector dropdown
+      $('select').on('change', function() {
+        //dbname = this.value;  // value of the select is the name of the database
+        clearTextArea();
+        appendTextBox("New database selected:\nChoose dataset to plot.")
+        postNewGroups(this.value); // post the database name to the server to get the list of groups
+      })
+
+    // On click of dataset group buttons
+      $('#buttongroupdiv').on('click','.groupBtns',function(){
+        
+        var groupname = this.id; // id of the clicked button is the group name
+        var databasename = $('#select').val(); // possibly new db selected
+        if (groupname != datagroupname || dbname != databasename){
+           // value of the drop down selector is the current database
+          clearTextArea();
+          appendTextBox("Loading new dataset...")
+          postNewDataset(groupname, databasename);
+        }
+    });
+
+    // On click of component buttons
+    // btn-default == button off
+    // btn-primary == button on
+    $('#compbtndiv').on('click','.compBtn',function(){
+      if ($(this).hasClass("btn-default")) {  //if button clicked is off
+        var components_string = selected_components.toString();
+        var components_to_plot = [];  // empty array to push active components on to plot
+
+        //active_component_buttons is a binary array representing active buttons
+        var sum=0; var i=10; while(i--) sum += active_component_buttons[i]; // sum of binary array = number of active buttons
+        if(sum < 3){  // if there are less than 3 buttons selected then the clicked button can be activated
+          $(this).removeClass("btn-default").addClass("btn-primary"); // change from off to on
+          active_component_buttons[this.id] = 1;
+          selected_components.length =0;  // deleted the array by setting len to 0
+
+          for (var i = 0; i < 10; i++) {
+            if(active_component_buttons[i]){
+              components_to_plot.push(i+1); // buttons start at 0, components start at 1
+              selected_components.push(i);
+            }
+          }
+          // BAD INPUT CHECK
+          // if the newly selected component means the overall plot stays the same, dont redraw it, ie: same component selected
+          // only redraw if 3 components have been selected
+          if(selected_components.length == 3 && components_string != selected_components.toString()){ 
+            appendTextBox("Plotting components: " + components_to_plot.toString())
+            drawScatterPlot();
+          }
+        }
+        } else {  // else button has been deactivated
+          $(this).removeClass("btn-primary").addClass("btn-default")
+          active_component_buttons[this.id] = 0
+        }
+    });
+
+    // On click of tooltip button
+    $('#tooltip').on('click',function(){
+      if ($(this).hasClass("btn-default")) {  //if button is off
+        $(this).removeClass("btn-default").addClass("btn-primary");
+        selected_tooltip =  1;
+        appendTextBox("Point tooltips: On");
+        drawScatterPlot() // redraw with new options selected
+      }
+      else{
+        $(this).removeClass("btn-primary").addClass("btn-default")
+        selected_tooltip = 0;
+        appendTextBox("Point tooltips: Off");
+        drawScatterPlot()
+      }
+    });
+
+    // On click of label button
+    $('#labeldiv').on('click','.labelBtns',function(){
+      var last_button = false;  // boolean to check if there is only one button remaining
+      var btnIndex = this.value;  // value of the button is the label
+
+        //Get the name of the label for printing, label -1 is actually stored as last element in the array
+        if(btnIndex == labelcount.length-1){
+          var labelName = -1;
+        }else{
+          var labelName = btnIndex;
+        }
+        
+        //  If clicked button is off
+        if ($(this).hasClass("btn-default")) {
+          //  Turn it on
+          $(this).removeClass("btn-default").addClass("btn-primary")
+          selected_labels[btnIndex]  =1;
+          appendTextBox("Plotting labels: " + labelName)
+        }
+        else{
+          //  Prevent deactiving every label
+          var sum=0; var i=labelcount.length; while(i--) sum += selected_labels[i]; // sum of binary array of selected labels
+          if (sum==1){  // if only one label is left
+            last_button = true;
+          }
+          else{
+            selected_labels[btnIndex]  =0;
+            last_button = false;
+            $(this).removeClass("btn-primary").addClass("btn-default")
+            appendTextBox("Removing labels: " + labelName)
+          }
+        }
+        if (!last_button){  // only redraw if there is an active button
+          drawScatterPlot();
+        }
+
+    });
+    /*
+    * END EVENT LISTNERS
+    */
+
+
+
+    /*
+    * START AJAX GETS ON LOAD
+    */
+    //Get the names of the groups in the first H5 file
+    $.ajax({
+        type: 'GET',
+        url: '/getOrPostGroups',
+        dataType: 'json',
+        contentType: 'application/json; charset=utf-8',
+        success: function(data) {
+            if (data == null) {
+              console.log("No data arrived back from server from: " + url);
+            } else {
+              datagroupname =data[0]; // select first group automatically
+              data_group_names = data;  // server returns the names of the groups
+              createButtonGroup();  // only create the group buttons once data has arrived
+            }
+          },
+        });
+    
+    // Get the list of avaliable H5 files
+    $.ajax({
+        type: 'GET',
+        url: '/getDatabaseList',
+        dataType: 'json',
+        contentType: 'application/json; charset=utf-8',
+        success: function(data) {
+            if (data == null) {
+              console.log("No data arrived back from server from: " + url);
+            } else {
+              dbname = data[0]; // select first database automatically
+              for (var i = 0; i < data.length; i++) {
+                $('#select').append($('<option>', { // append the names of all avaliable H5 files to the drop down selector
+                  text: data[i]
+              }));
+              }
+              writeText();  // only write the initial information to text box once the names have been recieved
+            }
+          },
+        });
+    /*
+    * END AJAX GETS ON LOAD
+    */
+        
+      // Init: labels, visjs plot, get raw data from server for first data point automatically
+      // NOTE: AJAX is asynchronous therefore these will likely occur before group names and database names have arrived back from server
+      createLabelButtons();
+      drawScatterPlot();
+      postRawData(0);
+    });
+
+
+
+
+
+    /*
+    * START FUNCTION PROTOTYPES
+    */
+    Element.prototype.remove = function() {
+    this.parentElement.removeChild(this);
+    }
+    NodeList.prototype.remove = HTMLCollection.prototype.remove = function() {
+        for(var i = this.length - 1; i >= 0; i--) {
+            if(this[i] && this[i].parentElement) {
+                this[i].parentElement.removeChild(this[i]);
+            }
+        }
+    }
+    Number.prototype.pad = function(size) {
+      var s = String(this);
+      while (s.length < (size || 2)) {s = "0" + s;}
+      return s;
+    }
+    /*
+    * END FUNCTION PROTOTYPES
+    */
+
+
+    /*
+    * START AJAX FUNCTIONS
+    */
+    // Post the name of the requested database to server to get the names of its groups back
+    function postNewGroups(dbname){
+      $.ajax({
+        type: 'POST',
+        url: '/getOrPostGroups',
+        dataType: 'json',
+        data: JSON.stringify(dbname),
+        contentType: 'application/json; charset=utf-8',
+        success: function(data) {
+            if (data == null) {
+            } else {
+              removeButtonGroup();  // delete all old group buttons
+              data_group_names.length = 0;
+              data_group_names = data;
+              createButtonGroup();  // create new group buttons
+            }
+          },
+        });
+    }
+
+    // Post the index of the rawdata to the server and request the rawdata back for 2D plotting
+    function postRawData(index){
+      $.ajax({
+                type: 'POST',
+                url: '/postRawData',
+                dataType: 'json',
+                contentType: 'application/json; charset=utf-8',
+                data: JSON.stringify(index),
+                success: function(data) {
+                  if (data == null) {
+                    console.log("No data arrived back from server from: " + url);
+                  } else {
+                    raw_data = data; // stored the returned data in global variable rawData
+                  }
+                }
+                
+              })
+              current_rawdata_index = index;  // global variable for the index of the new raw data point
+              drawRawData();
+              appendTextBox("Plotting raw data: "+ current_rawdata_index + " label : "+labels[current_rawdata_index]);
+    } 
+
+    // Post the name of the database and group to the server and request data
+    // Data returned should be: components, labels, metrics and labelcount
+    function postNewDataset(groupname, databasename){
+      // store the new database and dataset group to the global variables
+      dbname = databasename;  
+      datagroupname = groupname;
+
+      $.ajax({
+        type: 'POST',
+        url: '/postNewDataset',
+        dataType: 'json',
+        data: JSON.stringify({groupname : groupname, dbname : dbname}),
+        contentType: 'application/json; charset=utf-8',
+        success: function(data) {
+            if (data == null) {
+              console.log("No data arrived back from server from: " + url);
+            } else {
+              // reset arrays
+              component_data.length =0;
+              labels.length = 0;
+              // load new data into global variables  
+              component_data = data.components;
+              labels = data.labels;
+              metrics = data.metrics;
+              // reinitialise: buttons and plots
+              removeLabelButtons();
+              labelcount = data.labelcount;
+              writeText();
+              createLabelButtons();
+              drawScatterPlot();
+              postRawData(0);
+            }
+          },
+        });
+    }
+    /*
+    * END AJAX FUNCTIONS
+    */
+
+
+    /*
+    * START TEXTBOX FUNCTIONS
+    */
+    function clearTextArea(){
+      document.getElementById("textBox").innerHTML = "";
+    }
+    function appendTextBox(text){
+      document.getElementById("textBox").innerHTML += text + "<br />";
+      var element = document.getElementById("textBoxContainer");
+      element.scrollTop = element.scrollHeight;
+    }
+    function writeText(){
+      document.getElementById("textBox").style.whiteSpace = "pre";
+        document.getElementById("textBox").innerHTML = "Current Database:<br />"+ dbname + "<br /><br />"
+        document.getElementById("textBox").innerHTML += "Group Name: <br />"+ datagroupname + "<br /><br />";
+        document.getElementById("textBox").innerHTML += "Total data: \t"+component_data.length + "<br />";
+        for (var i = 0; i < labelcount.length; i++) {
+            document.getElementById("textBox").innerHTML += "Label "+labelcount[i][0] +"'s :\t" +labelcount[i][1] + "<br />";
+        }
+        document.getElementById("textBox").innerHTML += "<br />Metrics:<br />";
+        document.getElementById("textBox").innerHTML += "Silhouette Coefficient :\t" + metrics[0].toFixed(3) + "<br />";
+        document.getElementById("textBox").innerHTML += "Separability Index : \t" + metrics[1].toFixed(3) + "<br /><br />";
+    }
+    /*
+    * END TEXTBOX FUNCTIONS
+    */
+
+    /*
+    * START DYNAMIC CONTENT CREATION FUNCTIONS
+    */
+    // Remove all <div>'s with the group button names
+    function removeButtonGroup(){
+      for(var i =0; i < data_group_names.length; i++){
+        var divname = 'grpBtn'+data_group_names[i];
+        document.getElementById(divname).remove();
+      }
+    }
+    // Create <div>'s for each group button
+    function createButtonGroup(){
+      for (var i = 0; i < data_group_names.length; i++) {
+      var newTextBoxDiv = $('<div/>').prop('id', 'ButtonBoxDiv' + i);
+      var divname = 'button'+data_group_names[i];
+      newTextBoxDiv.after().html(
+        '<div id="grpBtn'+data_group_names[i]+'"><button type="button" style="border:1px solid #000;margin-bottom:3px;font:14pt arial" id="'+data_group_names[i]+'" class="btn btn-primary btn-block groupBtns">'+data_group_names[i]+'</button></div>');
+
+      newTextBoxDiv.appendTo("#buttongroupdiv");
+      }
+    }
+
+    // Remove all <div>'s with the label button names
+    function removeLabelButtons(){
+      selected_labels.length = 0;
+      for(var i =0; i < labelcount.length; i++){
+        var divname = 'lblBtn'+labelcount[i][0];
+        document.getElementById(divname).remove();
+      }
+    }
+    // Create <div>'s for each label button
+    function createLabelButtons(){
+      for (var i = 0; i < labelcount.length; i++) {
+      selected_labels.push(1);
+      var newTextBoxDiv = $('<div/>').prop('id', 'ButtonLabelDiv' + i);
+
+      newTextBoxDiv.after().html(
+              '<div id="lblBtn'+labelcount[i][0]+'"><button type="button"  style="margin-bottom:3px;font:14pt arial;border:1px solid #000;" id="labelbuttonid'+labelcount[i][0]+'" value='+i+' class="btn btn-primary btn-block labelBtns">'+labelcount[i][0]+'</button></div>');
+
+      newTextBoxDiv.appendTo("#labeldiv");
+      }
+    }
+    /*
+    * END DYNAMIC CONTENT CREATION FUNCTIONS
+    */
+
+
+
+    // Event listner for clicking a data point on 3D scatter plot
+    function onclick(point) {
+      // BAD INPUT CHECK
+      // Prevent replotting of same datapoint
+      if(current_rawdata_index != point.id){
+        postRawData(point.id);
+      }
+    }
+
+////////////////////////////////////// VISJS FUNCTIONS
+    function drawScatterPlot() {
+
+      var clusterData = new vis.DataSet();
+      for (var i = 0; i <component_data.length; i++) {
+        
+        if (labels[i] == -1){
+          var templabel = labelcount.length-1;
+        }
+        else{
+          var templabel = labels[i];
+        }
+       if(selected_labels[templabel] == 1){
+         
+          var x =component_data[i][selected_components[0]];
+          var y =component_data[i][selected_components[1]];
+          var z =component_data[i][selected_components[2]];
+          var style = labels[i];
+          clusterData.add({id:i, x:x,y:y,z:z,style:style});
+       }
+      }
+
+      if(selected_tooltip){
+        var clusterOptions = {
+          legendLabel : "Labels",
+          height: '500px',
+          width: '100%',
+          style: 'dot-color',
+          showLegend: true,
+          keepAspectRatio: false,
+          verticalRatio: 1.0,
+          onclick: onclick,
+          cameraPosition: {
+            horizontal: -0.35,
+            vertical: 0,
+            distance: 2.2
+          },
+          tooltip: function (point) {
+            postRawData(point.data.id);
+              return "<b>RawData:</b> " + point.data.id + "<br>" 
+            + "<b>Label:</b> " + point.data.style + "<br>"
+            + "<b>X:</b> " + point.x.toFixed(3) + " <b>Y: </b>" + point.y.toFixed(3) + " <b>Z: </b>" + point.z.toFixed(3);
+          },
+          // Tooltip default styling can be overridden
+          tooltipStyle: {
+            content: {
+              background    : 'rgba(255, 255, 255, 0.9)',
+              padding       : '10px',
+              borderRadius  : '10px'
+            },
+            dot: {
+              border        : '5px solid rgba(0, 0, 0, 0.5)'
+            }
+          }
+
+        };
+      }
+      else{
+        var clusterOptions = {
+          legendLabel : "Labels",
+          height: '500px',
+          width: '100%',
+          style: 'dot-color',
+          showLegend: true,
+          keepAspectRatio: false,
+          verticalRatio: 1.0,
+          onclick: onclick,
+          cameraPosition: {
+            horizontal: -0.35,
+            vertical: 0,
+            distance: 2.2
+          },
+        };
+      }
+      var clusterContainer = document.getElementById('clusterGraph');
+      clusterGraph = new vis.Graph3d(clusterContainer, clusterData, clusterOptions);
+    }
+
+  ////////////////////////////////////// CANVASJS FUNCTIONS
+    function drawRawData() {
+      chart = new CanvasJS.Chart("RawDataGraph", {
+        animationEnabled: false,
+        theme: "light2",
+        title:{
+          text: "RawData : 0"
+        },
+        axisY: {
+          title: "Y"
+        },
+        data: [{  
+          type: "line",      
+          dataPoints: []
+        }]
+      });
+      for (var i = 0; i < raw_data.length; i++) {
+        chart.options.data[0].dataPoints.push({y:raw_data[i]});
+      }
+      chart.options.title.text = "Raw Data : " + current_rawdata_index + " Label : " + labels[current_rawdata_index];
+      chart.render();
+    }
+  </script>
+  
+</head>
+
+
+<body>
+  <div class="container-fluid">
+      <div class="row" >
+          <div class="col-md-2">
+            <div class="col-md-12 headings">
+                <button type="button" class="btn btn-primary-outline btn-block" disabled="disabled" >Select Data:</button>
+            </div>
+          </div>
+          <div class="col-md-1">
+                  <button type="button" class="btn btn-primary-outline btn-block" disabled="disabled" style="margin-left:-1em;">Components:</button>
+          </div>
+          <div class="col-md-1">
+              <div class="col-md-12 headings">
+                  <button type="button" class="btn btn-primary-outline btn-block" disabled="disabled" >Labels:</button>
+                </div>
+          </div>
+          <div class="col-md-5">
+              <div class="col-md-12 headings">
+                  <button type="button" class="btn btn-primary-outline btn-block" disabled="disabled" >Component Plot:</button>
+                </div>
+          </div>
+          <div class="col-md-3">
+              <div class="col-md-12 headings">
+                  <button type="button" class="btn btn-primary-outline btn-block" disabled="disabled" >Description:</button>
+                </div>
+          </div>
+      </div>
+    <div class="row"  style="font:14pt arial;">
+        <div class="col-md-2" >
+            <div class="col-md-12" style="border:1px solid #ccc;height:500px;">
+            <form>
+                <div class="form-group">
+                  <select class="form-control" id="select" style="margin-top:1em;font: 15pt arial">
+                  </select>
+                </div>
+              </form>
+              <div class="btn-group-vertical btn-group-lg btn-group-justified" id ="buttongroupdiv" style="height:500px;">
+              </div>
+        </div>
+      </div>
+      
+      <div class="col-md-1" style="border:1px solid #ccc;height:500px;">
+          <form>
+              <div class="form-group" id="compbtndiv" style = "margin-top:1em;">
+                  
+                <button type="button" style="font:14pt arial;border:1px solid #000;" id=0 class="btn btn-primary btn-block compBtn">1</button>
+                <button type="button" style="font:14pt arial;border:1px solid #000;" id=1 class="btn btn-primary btn-block compBtn">2</button>
+                <button type="button" style="font:14pt arial;border:1px solid #000;" id=2 class="btn btn-primary btn-block compBtn">3</button>
+                <button type="button" style="font:14pt arial;border:1px solid #000;" id=3 class="btn btn-default btn-block compBtn">4</button>
+                <button type="button" style="font:14pt arial;border:1px solid #000;" id=4 class="btn btn-default btn-block compBtn">5</button>
+                <button type="button" style="font:14pt arial;border:1px solid #000;" id=5 class="btn btn-default btn-block compBtn">6</button>
+                <button type="button" style="font:14pt arial;border:1px solid #000;" id=6 class="btn btn-default btn-block compBtn">7</button>
+                <button type="button" style="font:14pt arial;border:1px solid #000;" id=7 class="btn btn-default btn-block compBtn">8</button>
+                <button type="button" style="font:14pt arial;border:1px solid #000;" id=8 class="btn btn-default btn-block compBtn">9</button>
+                <button type="button" style="font:14pt arial;border:1px solid #000;" id=9 class="btn btn-default btn-block compBtn">10</button>
+                
+                <button type="button" style="margin-top:1em;font:14pt arial;border:1px solid #000;" id="tooltip" class="btn btn-default btn-block tooltipBtn">Tooltips</button>
+
+              </div>
+        </form>
+    </div>
+    <div class="col-md-1" >
+        <div class="col-md-12"  style="border:1px solid #ccc;height:500px;overflow:auto">
+          <div id="labeldiv" style="margin-top:1em"></div>
+    </div>
+  </div>
+      <div class="col-md-5">
+          <div id="clusterGraph" style="border:1px solid #ccc;height:500px;"></div>
+      </div>
+      <div class="col-md-3">
+          <div class="col-md-12" id="textBoxContainer" style="border:1px solid #ccc;height:500px;overflow:auto">
+          <div id="textBox" style="margin-top:1em">
+            </div></div>
+    </div>
+  </div>
+    <div class="row">
+        <div class="col-md-12" style="margin-top:1em;">
+            <div id="RawDataGraph" style="height:300px;"></div>
+        </div>
+
+    </div>
+  </div>
+
+
+
+
+
+</body>
+</html>
