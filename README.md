@@ -1,7 +1,7 @@
 VuSETI
 ===========
 
-Pronouced View SETI, this web server/client Python application can be used for visualisation of clustered data generated using machine learning algorithms from a separate script.
+Pronouced View SETI, this web server/client Python application can be used for visualisation of clustered data generated using machine learning algorithms from a separate script. This tool can help with data exploration and as a pre-processing tool for feature selection and dimensionality reduction in machine learning prior to training a classifier.
 <p align="center">
 <img src="https://i.imgur.com/MUZBnyf.png" width="80%">
 </p>
