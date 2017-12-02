@@ -9,9 +9,9 @@ Pronouced View SETI, this web server/client Python application can be used for v
 
 Synopsis
 --------
-The rendered Bootstrap HTML page dynmically generates content based on input data and uses [Vis.JS](http://visjs.org/docs/graph3d/) for a 3D cluster visualisation scatter plot and [Canvas.JS](https://canvasjs.com/html5-javascript-line-chart/) for 2D raw data visualisation. Communication between the server and client is done in JSON via [AJAX jQuery](http://api.jquery.com/jquery.ajax/) and all event handlers are performed by jQuery.
+The rendered Bootstrap HTML page dynmically generates content based on input data and uses [Vis.JS](http://visjs.org/docs/graph3d/) for a 3D cluster visualisation scatter plot and [Canvas.JS](https://canvasjs.com/html5-javascript-line-chart/) for 1D raw data visualisation. Communication between the server and client is done in JSON via [AJAX jQuery](http://api.jquery.com/jquery.ajax/) and all event handlers are performed by jQuery.
 
-The Data_Analyis_Script.py uses [Scikit-Learn](http://scikit-learn.org/stable/) for machine learning dimensionality reduction, feature selection and clustering. The script uses component analysis techniques on unlabelled data stored in HDF5 files and clustering techniques to apply labels to the computed components.
+The Data_Analyis_Script.py uses [Scikit-Learn](http://scikit-learn.org/stable/) for machine learning dimensionality reduction, feature selection and data clustering. The script uses component analysis techniques on unlabelled data stored in HDF5 files and clustering techniques to apply labels to the computed components. These algorithms are fundamental to unsupervised machine learning, using correlation and variance to derive class membership in order to pre-process datasets and make the process of training classifiers easier for other projects.
 
 Dependencies:
 --------
