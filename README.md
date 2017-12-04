@@ -78,7 +78,7 @@ Server Functionaliy
 --------
 The methods in Server.py using Flask to render HTML pages and H5Py to interact with HDF5 files is shown below:
 <p align="center">
-<img src="https://i.imgur.com/CDtCh95.png" width="65%">
+<img src="https://i.imgur.com/AVQ0Mwf.png" width="65%">
 </p>
 
 Webpage Functionality
