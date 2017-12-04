@@ -7,6 +7,7 @@ Pronouced View SETI, this web server/client Python application can be used for v
 </p>
 
 Kyle Harrison: kyleharrison1994@gmail.com
+
 Dr Amit Mishra: akmishra@ieee.org
 
 Synopsis
